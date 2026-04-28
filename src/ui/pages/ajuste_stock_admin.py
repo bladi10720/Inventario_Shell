@@ -18,6 +18,11 @@ def render(*, auth: AuthState) -> None:
 
     engine = get_engine()
 
+    # Reset widgets on next run (avoid StreamlitAPIException).
+    if st.session_state.pop("_reset_adj_widgets", False):
+        st.session_state["adj_code"] = ""
+        st.session_state["adj_date"] = date.today()
+
     col1, col2 = st.columns([2, 1])
     with col1:
         code = st.text_input("Código", key="adj_code", placeholder="Ej: 959523")
@@ -78,8 +83,7 @@ def render(*, auth: AuthState) -> None:
             )
             updated_stock = get_stock_by_code(engine=engine, code=code_norm) or 0
             st.success(f"Ajuste registrado. Nuevo stock: {int(updated_stock)}")
-            st.session_state["adj_code"] = ""
-            st.session_state["adj_date"] = date.today()
+            st.session_state["_reset_adj_widgets"] = True
             st.rerun()
         except Exception as e:  # noqa: BLE001
             st.error(f"No se pudo registrar el ajuste: {e}")
