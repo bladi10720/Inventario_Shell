@@ -149,6 +149,86 @@ def void_out_closure_and_delete_out_movements(*, engine: Engine, movement_date: 
         )
         return int(deleted.rowcount or 0)
 
+
+def get_out_closure_status(*, engine: Engine, movement_date: date) -> dict[str, Any] | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT date, status, actor_role, created_at, voided_at
+                FROM daily_out_closures
+                WHERE date = :date
+                """
+            ),
+            {"date": movement_date},
+        ).mappings().first()
+    return dict(row) if row else None
+
+
+def append_daily_out_batch(
+    *,
+    engine: Engine,
+    movement_date: date,
+    items: list[dict[str, Any]],
+    actor_role: Role,
+) -> None:
+    """
+    Appends OUT movements to an already active closure date.
+    """
+    with engine.begin() as conn:
+        closure = conn.execute(
+            text(
+                """
+                SELECT status
+                FROM daily_out_closures
+                WHERE date = :date
+                """
+            ),
+            {"date": movement_date},
+        ).mappings().first()
+        if not closure or closure["status"] != "active":
+            raise RuntimeError(f"No existe una carga activa para {movement_date}.")
+
+        # Validate stock for each item
+        for it in items:
+            code = str(it["product_code"]).strip()
+            want = int(it["qty"])
+            stock = conn.execute(
+                text(
+                    """
+                    SELECT
+                      COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.qty ELSE 0 END), 0) -
+                      COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.qty ELSE 0 END), 0) AS stock
+                    FROM products p
+                    LEFT JOIN movements m ON m.product_code = p.code
+                    WHERE p.code = :code
+                    GROUP BY p.code
+                    """
+                ),
+                {"code": code},
+            ).scalar_one_or_none()
+            if stock is None:
+                raise RuntimeError(f"Código no existe: {code}")
+            if int(stock) < want:
+                raise RuntimeError(f"Stock insuficiente para {code}. Disponible {int(stock)}; solicitado {want}.")
+
+        conn.execute(
+            text(
+                """
+                INSERT INTO movements (type, movement_date, product_code, qty, actor_role)
+                VALUES ('OUT', :movement_date, :product_code, :qty, :actor_role)
+                """
+            ),
+            [
+                {
+                    "movement_date": movement_date,
+                    "product_code": str(it["product_code"]).strip(),
+                    "qty": int(it["qty"]),
+                    "actor_role": actor_role,
+                }
+                for it in items
+            ],
+        )
 def insert_daily_out_batch(
     *,
     engine: Engine,

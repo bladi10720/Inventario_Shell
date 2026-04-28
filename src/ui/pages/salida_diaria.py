@@ -6,7 +6,12 @@ import streamlit as st
 
 from ...auth import AuthState
 from ...db import get_engine
-from ...repo.movements import insert_daily_out_batch, void_out_closure_and_delete_out_movements
+from ...repo.movements import (
+    append_daily_out_batch,
+    get_out_closure_status,
+    insert_daily_out_batch,
+    void_out_closure_and_delete_out_movements,
+)
 from ...repo.products import get_product
 from ...repo.movements import get_stock_by_code
 
@@ -17,6 +22,9 @@ def render(*, auth: AuthState) -> None:
 
     default_day = date.today() - timedelta(days=1)
     movement_date = st.date_input("Fecha de ventas (por defecto: ayer)", value=default_day)
+
+    closure = get_out_closure_status(engine=engine, movement_date=movement_date)
+    closure_active = bool(closure and closure.get("status") == "active")
 
     # Reset input widgets on next run to avoid StreamlitAPIException.
     if st.session_state.pop("_reset_daily_out_inputs", False):
@@ -102,7 +110,12 @@ def render(*, auth: AuthState) -> None:
 
     cval, csave, cclear = st.columns([1, 1, 1])
     validate_clicked = cval.button("Validar")
-    save_clicked = csave.button("Guardar todo", type="primary", disabled=not bool(st.session_state.get("daily_out_validated")))
+    save_clicked = csave.button(
+        "Guardar todo",
+        type="primary",
+        disabled=not bool(st.session_state.get("daily_out_validated")),
+        help="Si ya existe una carga para la fecha, usa 'Añadir a este día' o 'Reemplazar (admin)'.",
+    )
     clear_clicked = cclear.button("Limpiar lista")
 
     if clear_clicked:
@@ -129,6 +142,8 @@ def render(*, auth: AuthState) -> None:
     if save_clicked:
         items = [{"product_code": c, "qty": int(q)} for c, q in cart.items()]
         try:
+            if closure_active:
+                raise RuntimeError(f"Ya existe una carga activa para {movement_date}.")
             insert_daily_out_batch(engine=engine, movement_date=movement_date, items=items, actor_role=auth.role)
             st.success("Salidas guardadas y cierre creado.")
             st.session_state["daily_out_cart"] = {}
@@ -137,12 +152,34 @@ def render(*, auth: AuthState) -> None:
         except Exception as e:  # noqa: BLE001
             st.error(str(e))
             st.session_state["daily_out_validated"] = False
-            if auth.role == "admin":
-                st.warning("Si necesitas corregir, puedes anular el cierre y volver a cargar.")
-                if st.button("Anular cierre de esta fecha (admin)"):
-                    try:
-                        deleted = void_out_closure_and_delete_out_movements(engine=engine, movement_date=movement_date)
-                        st.success(f"Cierre anulado y salidas eliminadas para esa fecha. Filas eliminadas: {deleted}.")
-                    except Exception as e2:  # noqa: BLE001
-                        st.error(f"No se pudo anular: {e2}")
+
+    if closure_active:
+        st.warning(
+            f"Ya existe una carga activa para {movement_date}. "
+            "Puedes añadir más salidas a ese día, o reemplazar la carga (admin)."
+        )
+        a1, a2 = st.columns([1, 1])
+        if a1.button("Añadir a este día (sumar salidas)"):
+            try:
+                items = [{"product_code": c, "qty": int(q)} for c, q in st.session_state["daily_out_cart"].items()]
+                append_daily_out_batch(engine=engine, movement_date=movement_date, items=items, actor_role=auth.role)
+                st.success("Salidas añadidas al día.")
+                st.session_state["daily_out_cart"] = {}
+                st.session_state["daily_out_validated"] = False
+                st.rerun()
+            except Exception as e:  # noqa: BLE001
+                st.error(str(e))
+
+        if auth.role == "admin":
+            if a2.button("Reemplazar carga del día (admin)"):
+                try:
+                    deleted = void_out_closure_and_delete_out_movements(engine=engine, movement_date=movement_date)
+                    items = [{"product_code": c, "qty": int(q)} for c, q in st.session_state["daily_out_cart"].items()]
+                    insert_daily_out_batch(engine=engine, movement_date=movement_date, items=items, actor_role=auth.role)
+                    st.success(f"Carga reemplazada. Filas OUT eliminadas: {deleted}.")
+                    st.session_state["daily_out_cart"] = {}
+                    st.session_state["daily_out_validated"] = False
+                    st.rerun()
+                except Exception as e:  # noqa: BLE001
+                    st.error(str(e))
 
