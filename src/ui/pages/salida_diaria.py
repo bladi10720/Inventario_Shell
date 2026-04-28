@@ -18,6 +18,11 @@ def render(*, auth: AuthState) -> None:
     default_day = date.today() - timedelta(days=1)
     movement_date = st.date_input("Fecha de ventas (por defecto: ayer)", value=default_day)
 
+    # Reset input widgets on next run to avoid StreamlitAPIException.
+    if st.session_state.pop("_reset_daily_out_inputs", False):
+        st.session_state["daily_out_code"] = ""
+        st.session_state["daily_out_qty"] = 1
+
     if "daily_out_cart" not in st.session_state:
         st.session_state["daily_out_cart"] = {}  # code -> qty
     if "daily_out_validated" not in st.session_state:
@@ -45,8 +50,7 @@ def render(*, auth: AuthState) -> None:
                 cart[code_norm] = int(cart.get(code_norm, 0)) + int(qty)
                 st.session_state["daily_out_cart"] = cart
                 st.session_state["daily_out_validated"] = False
-                st.session_state["daily_out_code"] = ""
-                st.session_state["daily_out_qty"] = 1
+                st.session_state["_reset_daily_out_inputs"] = True
                 st.rerun()
 
     st.divider()
