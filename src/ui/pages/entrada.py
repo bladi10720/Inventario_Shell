@@ -15,6 +15,15 @@ def render(*, auth: AuthState) -> None:
 
     engine = get_engine()
 
+    # Reset widgets on next run (avoid StreamlitAPIException by not mutating widget keys
+    # after instantiation in the same run).
+    if st.session_state.pop("_reset_in_widgets", False):
+        st.session_state["in_code"] = ""
+        st.session_state["in_qty"] = 1
+        st.session_state["in_supplier"] = ""
+        st.session_state["in_folio"] = ""
+        st.session_state["in_note"] = ""
+
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         code = st.text_input("Código", key="in_code", placeholder="Ej: 959523")
@@ -79,11 +88,7 @@ def render(*, auth: AuthState) -> None:
             )
             new_stock = get_stock_by_code(engine=engine, code=code_norm)
             st.success(f"Entrada registrada. Nuevo stock: {int(new_stock or 0)}")
-            st.session_state["in_code"] = ""
-            st.session_state["in_qty"] = 1
-            st.session_state["in_supplier"] = ""
-            st.session_state["in_folio"] = ""
-            st.session_state["in_note"] = ""
+            st.session_state["_reset_in_widgets"] = True
             st.rerun()
         except Exception as e:  # noqa: BLE001
             st.error(f"No se pudo registrar la entrada: {e}")
