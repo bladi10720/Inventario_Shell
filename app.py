@@ -23,6 +23,7 @@ def main() -> None:
             "Salidas diarias",
             "Inventario",
             "Alertas",
+            "Ajuste stock (admin)",
             "Productos (admin)",
         ],
     )
@@ -43,6 +44,10 @@ def main() -> None:
         from src.ui.pages.alertas import render as render_alertas
 
         render_alertas(auth=auth)
+    elif page == "Ajuste stock (admin)":
+        from src.ui.pages.ajuste_stock_admin import render as render_ajuste
+
+        render_ajuste(auth=auth)
     elif page == "Productos (admin)":
         from src.ui.pages.productos_admin import render as render_productos
 
