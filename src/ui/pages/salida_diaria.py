@@ -6,7 +6,7 @@ import streamlit as st
 
 from ...auth import AuthState
 from ...db import get_engine
-from ...repo.movements import insert_daily_out_batch, void_out_closure
+from ...repo.movements import insert_daily_out_batch, void_out_closure_and_delete_out_movements
 from ...repo.products import get_product
 from ...repo.movements import get_stock_by_code
 
@@ -120,9 +120,11 @@ def render(*, auth: AuthState) -> None:
             st.error("Corrige antes de guardar:")
             for e in errors:
                 st.write(f"- {e}")
+            st.rerun()
         else:
             st.session_state["daily_out_validated"] = True
             st.success("Validación OK. Ya puedes guardar.")
+            st.rerun()
 
     if save_clicked:
         items = [{"product_code": c, "qty": int(q)} for c, q in cart.items()]
@@ -139,8 +141,8 @@ def render(*, auth: AuthState) -> None:
                 st.warning("Si necesitas corregir, puedes anular el cierre y volver a cargar.")
                 if st.button("Anular cierre de esta fecha (admin)"):
                     try:
-                        void_out_closure(engine=engine, movement_date=movement_date)
-                        st.success("Cierre anulado. Ahora puedes volver a guardar.")
+                        deleted = void_out_closure_and_delete_out_movements(engine=engine, movement_date=movement_date)
+                        st.success(f"Cierre anulado y salidas eliminadas para esa fecha. Filas eliminadas: {deleted}.")
                     except Exception as e2:  # noqa: BLE001
                         st.error(f"No se pudo anular: {e2}")
 
