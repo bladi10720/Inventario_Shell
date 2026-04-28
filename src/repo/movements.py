@@ -115,6 +115,40 @@ def void_out_closure(*, engine: Engine, movement_date: date) -> None:
         )
 
 
+def void_out_closure_and_delete_out_movements(*, engine: Engine, movement_date: date) -> int:
+    """
+    Voids the daily closure and deletes OUT movements for that movement_date.
+
+    Returns number of OUT movement rows deleted.
+    """
+    with engine.begin() as conn:
+        updated = conn.execute(
+            text(
+                """
+                UPDATE daily_out_closures
+                SET status = 'voided', voided_at = NOW()
+                WHERE date = :date AND status = 'active'
+                RETURNING date
+                """
+            ),
+            {"date": movement_date},
+        ).first()
+
+        if updated is None:
+            # nothing to void
+            return 0
+
+        deleted = conn.execute(
+            text(
+                """
+                DELETE FROM movements
+                WHERE type = 'OUT' AND movement_date = :date
+                """
+            ),
+            {"date": movement_date},
+        )
+        return int(deleted.rowcount or 0)
+
 def insert_daily_out_batch(
     *,
     engine: Engine,
