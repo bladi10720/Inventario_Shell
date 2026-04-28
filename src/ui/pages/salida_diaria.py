@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date, timedelta
 
 import streamlit as st
@@ -19,114 +18,125 @@ def render(*, auth: AuthState) -> None:
     default_day = date.today() - timedelta(days=1)
     movement_date = st.date_input("Fecha de ventas (por defecto: ayer)", value=default_day)
 
-    st.caption("Formato por línea: `codigo cantidad` (separado por espacio). Ejemplo: `959523 2`")
-    raw = st.text_area("Pega o escribe aquí", height=220, placeholder="959523 2\n965174 1")
+    if "daily_out_cart" not in st.session_state:
+        st.session_state["daily_out_cart"] = {}  # code -> qty
+    if "daily_out_validated" not in st.session_state:
+        st.session_state["daily_out_validated"] = False
 
-    col1, col2 = st.columns([1, 1])
-    validate_clicked = col1.button("Validar")
-    save_clicked = col2.button("Guardar salidas", type="primary")
+    st.subheader("Agregar producto")
+    c1, c2, c3 = st.columns([2, 1, 1])
+    with c1:
+        code = st.text_input("Código", key="daily_out_code", placeholder="Ej: 959523")
+    with c2:
+        qty = st.number_input("Cantidad", key="daily_out_qty", min_value=1, step=1, value=1)
+    with c3:
+        add_clicked = st.button("Agregar", type="primary")
 
-    if "daily_out_items" not in st.session_state:
-        st.session_state["daily_out_items"] = []
+    code_norm = (code or "").strip()
+    if add_clicked:
+        if not code_norm:
+            st.error("Ingresa un código.")
+        else:
+            p = get_product(engine=engine, code=code_norm)
+            if not p:
+                st.error("El código no existe en productos.")
+            else:
+                cart: dict[str, int] = st.session_state["daily_out_cart"]
+                cart[code_norm] = int(cart.get(code_norm, 0)) + int(qty)
+                st.session_state["daily_out_cart"] = cart
+                st.session_state["daily_out_validated"] = False
+                st.session_state["daily_out_code"] = ""
+                st.session_state["daily_out_qty"] = 1
+                st.rerun()
+
+    st.divider()
+    st.subheader("Pendiente por guardar")
+    cart = st.session_state["daily_out_cart"]
+    if not cart:
+        st.info("No hay productos agregados todavía.")
+        return
+
+    # Build preview rows
+    preview_rows = []
+    errors: list[str] = []
+    for c, q in cart.items():
+        p = get_product(engine=engine, code=c)
+        if not p:
+            errors.append(f"Código no existe: {c}")
+            continue
+        stock = get_stock_by_code(engine=engine, code=c)
+        if stock is None:
+            errors.append(f"No se pudo calcular stock para: {c}")
+            continue
+        status = "OK" if stock >= q else f"Stock insuficiente (disp {stock})"
+        preview_rows.append(
+            {
+                "codigo": c,
+                "producto": p.name,
+                "categoria": p.category,
+                "stock_actual": stock,
+                "cantidad": q,
+                "estado": status,
+            }
+        )
+
+    st.dataframe(preview_rows, use_container_width=True)
+
+    total_items = len(preview_rows)
+    total_units = sum(int(r["cantidad"]) for r in preview_rows)
+    st.caption(f"Productos: {total_items} — Unidades: {total_units}")
+
+    # Remove items UI
+    with st.expander("Quitar productos", expanded=False):
+        to_remove = st.multiselect("Selecciona códigos a quitar", options=sorted(cart.keys()))
+        if st.button("Quitar seleccionados"):
+            for c in to_remove:
+                cart.pop(c, None)
+            st.session_state["daily_out_cart"] = cart
+            st.session_state["daily_out_validated"] = False
+            st.rerun()
+
+    cval, csave, cclear = st.columns([1, 1, 1])
+    validate_clicked = cval.button("Validar")
+    save_clicked = csave.button("Guardar todo", type="primary", disabled=not bool(st.session_state.get("daily_out_validated")))
+    clear_clicked = cclear.button("Limpiar lista")
+
+    if clear_clicked:
+        st.session_state["daily_out_cart"] = {}
+        st.session_state["daily_out_validated"] = False
+        st.rerun()
 
     if validate_clicked:
-        try:
-            items = _parse_lines(raw)
-        except Exception as e:  # noqa: BLE001
-            st.error(f"Error al parsear: {e}")
-            items = []
-
-        preview: list[_PreviewRow] = []
-        errors: list[str] = []
-        for code, qty in items.items():
-            p = get_product(engine=engine, code=code)
-            if not p:
-                errors.append(f"Código no existe: {code}")
-                continue
-            stock = get_stock_by_code(engine=engine, code=code)
-            if stock is None:
-                errors.append(f"No se pudo calcular stock para: {code}")
-                continue
-            if stock < qty:
-                errors.append(f"Stock insuficiente: {code} — disponible {stock}, solicitado {qty}")
-            preview.append(_PreviewRow(code=code, name=p.name, category=p.category, stock=stock, qty=qty))
-
+        errors = []
+        for r in preview_rows:
+            if r["estado"] != "OK":
+                errors.append(f"{r['codigo']}: {r['estado']}")
         if errors:
-            st.error("Corrige estos problemas antes de guardar:")
+            st.session_state["daily_out_validated"] = False
+            st.error("Corrige antes de guardar:")
             for e in errors:
                 st.write(f"- {e}")
-
-        if preview:
-            st.subheader("Vista previa")
-            st.dataframe([r.__dict__ for r in preview], use_container_width=True)
-
-        # Save only the valid/known items; we still require no errors to proceed on save.
-        st.session_state["daily_out_items"] = [{"product_code": r.code, "qty": r.qty} for r in preview]
-        st.session_state["daily_out_has_errors"] = bool(errors)
+        else:
+            st.session_state["daily_out_validated"] = True
+            st.success("Validación OK. Ya puedes guardar.")
 
     if save_clicked:
-        items = st.session_state.get("daily_out_items") or []
-        has_errors = bool(st.session_state.get("daily_out_has_errors"))
-        if not raw.strip():
-            st.error("No hay líneas para procesar.")
-            return
-        if not items:
-            st.error("Primero valida y asegúrate de que haya productos válidos.")
-            return
-        if has_errors:
-            st.error("Hay errores de validación. Corrige y vuelve a validar.")
-            return
-
+        items = [{"product_code": c, "qty": int(q)} for c, q in cart.items()]
         try:
             insert_daily_out_batch(engine=engine, movement_date=movement_date, items=items, actor_role=auth.role)
-            st.success("Salidas guardadas.")
+            st.success("Salidas guardadas y cierre creado.")
+            st.session_state["daily_out_cart"] = {}
+            st.session_state["daily_out_validated"] = False
+            st.rerun()
         except Exception as e:  # noqa: BLE001
             st.error(str(e))
+            st.session_state["daily_out_validated"] = False
             if auth.role == "admin":
                 st.warning("Si necesitas corregir, puedes anular el cierre y volver a cargar.")
                 if st.button("Anular cierre de esta fecha (admin)"):
                     try:
                         void_out_closure(engine=engine, movement_date=movement_date)
-                        st.success("Cierre anulado. Ahora puedes volver a cargar y guardar.")
+                        st.success("Cierre anulado. Ahora puedes volver a guardar.")
                     except Exception as e2:  # noqa: BLE001
                         st.error(f"No se pudo anular: {e2}")
-
-
-@dataclass(frozen=True)
-class _PreviewRow:
-    code: str
-    name: str
-    category: str
-    stock: int
-    qty: int
-
-
-def _parse_lines(raw: str) -> dict[str, int]:
-    """
-    Parse lines like: CODE QTY
-    Consolidates repeated codes by summing.
-    """
-    out: dict[str, int] = {}
-    for idx, line in enumerate((raw or "").splitlines(), start=1):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("#"):
-            continue
-
-        parts = stripped.replace(",", " ").split()
-        if len(parts) != 2:
-            raise ValueError(f"Línea {idx}: formato inválido. Usa `codigo cantidad`.")
-        code, qty_s = parts[0].strip(), parts[1].strip()
-        if not code:
-            raise ValueError(f"Línea {idx}: código vacío.")
-        try:
-            qty = int(qty_s)
-        except ValueError as e:
-            raise ValueError(f"Línea {idx}: cantidad inválida: {qty_s}") from e
-        if qty <= 0:
-            raise ValueError(f"Línea {idx}: cantidad debe ser > 0.")
-
-        out[code] = out.get(code, 0) + qty
-    return out
 
