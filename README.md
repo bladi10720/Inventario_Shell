@@ -11,6 +11,12 @@ App web para controlar stock por **entradas** y **salidas diarias**, con **alert
 - `PIN_ADMIN`: PIN para rol admin
 - `PIN_OPERADOR`: PIN para rol operador
 
+## Roles y PINs adicionales (opcional)
+
+Siempre puedes entrar con `PIN_ADMIN` o `PIN_OPERADOR`. Además, un administrador puede definir **más roles y PINs** en la base de datos: entra con un PIN de admin → menú **Roles y PINs (admin)**. Ahí creas roles (con un *slug* interno que queda en los movimientos para auditoría), marcas si el rol es administrador y asignas PINs por rol. Cada PIN debe ser único en toda la aplicación.
+
+Al arrancar la app se aplican migraciones mínimas en Postgres (tablas `roles` / `role_pins` y relajación de restricciones en `actor_role` si la base ya existía). No sustituye a **Inicializar base de datos** la primera vez: sigue haciendo falta para crear el resto de tablas si el esquema aún no está cargado.
+
 ## Ejecutar local
 1. Instala dependencias:
 
@@ -44,5 +50,5 @@ python -m streamlit run app.py
    - `DATABASE_URL`
    - `PIN_ADMIN`
    - `PIN_OPERADOR`
-5. Deploy. Usa la pantalla de admin para inicializar tablas e importar productos.
+5. Deploy. Usa la pantalla de admin para inicializar tablas e importar productos. Si necesitas más cuentas por PIN, configura **Roles y PINs (admin)** tras el primer acceso con `PIN_ADMIN`.
 
