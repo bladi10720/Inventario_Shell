@@ -4,16 +4,19 @@ import streamlit as st
 
 from src.auth import logout_button, require_auth
 from src.config import load_settings
+from src.db import get_engine
+from src.repo.schema import ensure_schema_migrations
 
 
 def main() -> None:
     st.set_page_config(page_title="Inventario", layout="wide")
 
     settings = load_settings()
+    ensure_schema_migrations(engine=get_engine())
     auth = require_auth(settings)
 
     st.sidebar.title("Inventario")
-    st.sidebar.caption(f"Rol: {auth.role}")
+    st.sidebar.caption(f"{auth.display_name} · {auth.role}")
     logout_button()
 
     page = st.sidebar.radio(
@@ -25,6 +28,7 @@ def main() -> None:
             "Alertas",
             "Ajuste stock (admin)",
             "Productos (admin)",
+            "Roles y PINs (admin)",
         ],
     )
 
@@ -52,6 +56,10 @@ def main() -> None:
         from src.ui.pages.productos_admin import render as render_productos
 
         render_productos(auth=auth)
+    elif page == "Roles y PINs (admin)":
+        from src.ui.pages.roles_admin import render as render_roles
+
+        render_roles(auth=auth)
     else:
         st.write("Selecciona una opción del menú.")
 
