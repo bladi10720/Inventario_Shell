@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 from sqlalchemy.exc import IntegrityError
 
@@ -63,6 +64,27 @@ def render(*, auth: AuthState) -> None:
     if not roles:
         st.info("Todavía no hay roles en la base. Crea uno y luego asigna PINs.")
         return
+
+    st.caption(
+        "Resumen de roles definidos en la base. Los accesos por **PIN_ADMIN** / **PIN_OPERADOR** (entorno) no aparecen aquí; siguen activos siempre."
+    )
+    summary_rows: list[dict[str, object]] = []
+    for r in roles:
+        pins = list_pins_for_role(engine=engine, role_id=r.id)
+        n_act = sum(1 for p in pins if p.active)
+        summary_rows.append(
+            {
+                "Nombre": r.display_name,
+                "Slug": r.slug,
+                "Administrador": "Sí" if r.is_admin else "No",
+                "Rol activo": "Sí" if r.active else "No",
+                "PINs activos": n_act,
+                "PINs (total)": len(pins),
+            }
+        )
+    st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+
+    st.caption("Abre un rol abajo para editarlo, ver PINs o añadir uno nuevo.")
 
     for r in roles:
         status = "activo" if r.active else "inactivo"
