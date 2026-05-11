@@ -8,7 +8,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 MovementType = Literal["IN", "OUT", "ADJUST"]
-Role = Literal["admin", "operador"]
+# Stored in DB (e.g. admin, operador, or custom slugs from Roles y PINs).
+Role = str
 
 
 @dataclass(frozen=True)
