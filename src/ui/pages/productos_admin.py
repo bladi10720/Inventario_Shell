@@ -13,7 +13,7 @@ from ...repo.schema import apply_schema
 
 def render(*, auth: AuthState) -> None:
     st.header("Productos (admin)")
-    if auth.role != "admin":
+    if not auth.is_admin:
         st.error("Acceso solo para admin.")
         return
 
