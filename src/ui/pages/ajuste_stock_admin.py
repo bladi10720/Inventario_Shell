@@ -12,7 +12,7 @@ from ...repo.products import get_product
 
 def render(*, auth: AuthState) -> None:
     st.header("Ajuste de stock (admin)")
-    if auth.role != "admin":
+    if not auth.is_admin:
         st.error("Acceso solo para admin.")
         return
 
