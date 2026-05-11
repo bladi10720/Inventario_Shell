@@ -25,6 +25,30 @@ def render(*, auth: AuthState) -> None:
             apply_schema(engine=engine)
             st.success("Listo. Esquema aplicado.")
 
+    st.subheader("Agregar producto")
+    st.caption("Alta manual de un artículo. Si el código ya existe, se actualiza nombre y categoría (como en el CSV).")
+    with st.form("add_single_product", clear_on_submit=True):
+        ap_code = st.text_input("Código", placeholder="Ej: 959523")
+        ap_name = st.text_input("Nombre", placeholder="Descripción del producto")
+        ap_category = st.text_input("Categoría", placeholder="Opcional; si queda vacío: Sin categoría")
+        add_submitted = st.form_submit_button("Guardar producto", type="primary")
+
+    if add_submitted:
+        code_s = (ap_code or "").strip()
+        name_s = (ap_name or "").strip()
+        cat_s = (ap_category or "").strip() or "Sin categoría"
+        if not code_s or not name_s:
+            st.error("Código y nombre son obligatorios.")
+        else:
+            inserted, updated = upsert_products(
+                engine=engine,
+                rows=[{"code": code_s, "name": name_s, "category": cat_s}],
+            )
+            if inserted:
+                st.success(f"Producto creado: {code_s}")
+            else:
+                st.success(f"Producto actualizado (código existente): {code_s}")
+
     st.subheader("Importar productos (CSV)")
     st.caption("Columnas esperadas: CODIGO, PRODUCTO, CATEGORIA.")
     uploaded = st.file_uploader("Sube tu CSV", type=["csv"])
