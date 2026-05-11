@@ -170,7 +170,7 @@ def render(*, auth: AuthState) -> None:
             except Exception as e:  # noqa: BLE001
                 st.error(str(e))
 
-        if auth.role == "admin":
+        if auth.is_admin:
             if a2.button("Reemplazar carga del día (admin)"):
                 try:
                     deleted = void_out_closure_and_delete_out_movements(engine=engine, movement_date=movement_date)
