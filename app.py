@@ -6,14 +6,12 @@ from src.auth import logout_button, require_auth
 from src.config import load_settings
 from src.db import get_engine
 from src.repo.schema import ensure_schema_migrations
+from src.ui.branding import APP_DISPLAY_NAME, apply_mobile_app_name
 
 
 def main() -> None:
-    st.set_page_config(page_title="Inventario Shell", layout="wide")
-    st.markdown(
-        '<meta name="apple-mobile-web-app-title" content="Inventario Shell">',
-        unsafe_allow_html=True,
-    )
+    st.set_page_config(page_title=APP_DISPLAY_NAME, layout="wide")
+    apply_mobile_app_name()
 
     settings = load_settings()
     ensure_schema_migrations(engine=get_engine())
