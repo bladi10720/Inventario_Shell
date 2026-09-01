@@ -9,7 +9,11 @@ from src.repo.schema import ensure_schema_migrations
 
 
 def main() -> None:
-    st.set_page_config(page_title="Inventario", layout="wide")
+    st.set_page_config(page_title="Inventario Shell", layout="wide")
+    st.markdown(
+        '<meta name="apple-mobile-web-app-title" content="Inventario Shell">',
+        unsafe_allow_html=True,
+    )
 
     settings = load_settings()
     ensure_schema_migrations(engine=get_engine())
